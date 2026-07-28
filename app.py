@@ -211,15 +211,17 @@ with aba_vendedoras:
 
 with aba_checklist:
     st.header(f"✅ Checklist Diário - {st.session_state.loja_selecionada}")
-    st.markdown("Marque as tarefas concluídas hoje.")
+    st.markdown("Marque as tarefas concluídas hoje. *(O dia reinicia às 8h da manhã)*")
     
-    hoje_str = get_now().strftime("%Y-%m-%d")
+    # O dia lógico do checklist só vira às 8:00 da manhã
+    logical_date = (get_now() - timedelta(hours=8)).strftime("%Y-%m-%d")
     df_check = st.session_state.checklist_data
     
     # Filtra as tarefas de hoje para a loja atual
     if not df_check.empty:
-        # Pega os primeiros 10 caracteres da Data_Hora para comparar com hoje_str
-        df_hoje = df_check[df_check["Data_Hora"].str[:10] == hoje_str]
+        # Calcula a data lógica para cada registro
+        df_check['Data_Logica'] = pd.to_datetime(df_check['Data_Hora'], format="%Y-%m-%d %H:%M:%S", errors='coerce').apply(lambda x: (x - timedelta(hours=8)).strftime("%Y-%m-%d") if pd.notna(x) else "")
+        df_hoje = df_check[df_check["Data_Logica"] == logical_date]
         df_loja_hoje = df_hoje[df_hoje["Loja"] == st.session_state.loja_selecionada]
     else:
         df_loja_hoje = pd.DataFrame(columns=["Data_Hora", "Loja", "Funcionaria", "Tarefa", "Status"])
@@ -361,6 +363,36 @@ with aba_admin:
                 st.metric("Taxa de Conversão", f"{taxa_conversao:.1f}%")
                 st.divider()
         
+        st.subheader("📋 Tarefas Pendentes do Checklist (Hoje)")
+        
+        df_check_admin = st.session_state.checklist_data
+        logical_date_admin = (get_now() - timedelta(hours=8)).strftime("%Y-%m-%d")
+        
+        if not df_check_admin.empty:
+            df_check_admin['Data_Logica'] = pd.to_datetime(df_check_admin['Data_Hora'], format="%Y-%m-%d %H:%M:%S", errors='coerce').apply(lambda x: (x - timedelta(hours=8)).strftime("%Y-%m-%d") if pd.notna(x) else "")
+            df_check_hoje_admin = df_check_admin[df_check_admin["Data_Logica"] == logical_date_admin]
+        else:
+            df_check_hoje_admin = pd.DataFrame(columns=["Data_Hora", "Loja", "Funcionaria", "Tarefa", "Status"])
+            
+        cols_check = st.columns(len(lojas_disponiveis))
+        for i, nome_loja in enumerate(lojas_disponiveis):
+            df_loja_check = df_check_hoje_admin[df_check_hoje_admin["Loja"] == nome_loja]
+            tarefas_concluidas = df_loja_check[df_loja_check["Status"] == "Concluído"]["Tarefa"].tolist()
+            
+            pendentes = [t for t in tarefas_checklist if t not in tarefas_concluidas]
+            
+            with cols_check[i]:
+                st.markdown(f"**{nome_loja}**")
+                if pendentes:
+                    for p in pendentes:
+                        st.markdown(f"❌ {p}")
+                else:
+                    if tarefas_checklist:
+                        st.success("Tudo concluído! 🎉")
+                    else:
+                        st.info("Nenhuma tarefa configurada.")
+        
+        st.divider()
         st.subheader("📋 Registros Recentes (Todas as Lojas)")
         st.dataframe(
             df.tail(15).sort_values(by="Data_Hora", ascending=False).drop(columns=['Data', 'Data_Date'], errors='ignore'), 
