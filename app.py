@@ -1,10 +1,13 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 import os
 
 st.set_page_config(page_title="Cianorte - Controle de Fluxo", page_icon="🛍️", layout="wide")
+
+def get_now():
+    return datetime.now() - timedelta(hours=3)
 
 # Inicializa a conexão com o Google Sheets
 try:
@@ -75,11 +78,18 @@ st.session_state.data = load_data()
 st.session_state.checklist_data = load_checklist()
 st.session_state.config_data = load_config()
 
-# Configuração de listas padrão
-tarefas_checklist = ["Limpeza da loja", "Organização do estoque", "Reposição de vitrine", "Fechamento de caixa", "Conferência de provadores"]
-
 # Prepara as lojas baseadas na configuração
 df_config = st.session_state.config_data
+
+# Configuração do Checklist
+if not df_config.empty and "Tarefa_Checklist" in df_config.columns:
+    tarefas_checklist = df_config["Tarefa_Checklist"].dropna().astype(str).tolist()
+    tarefas_checklist = [t.strip() for t in tarefas_checklist if t.strip() != ""]
+    if not tarefas_checklist:
+        tarefas_checklist = ["Limpeza da loja", "Organização do estoque", "Reposição de vitrine", "Fechamento de caixa", "Conferência de provadores"]
+else:
+    tarefas_checklist = ["Limpeza da loja", "Organização do estoque", "Reposição de vitrine", "Fechamento de caixa", "Conferência de provadores"]
+
 if not df_config.empty and "Loja" in df_config.columns:
     lojas_disponiveis = df_config["Loja"].dropna().unique().tolist()
     if not lojas_disponiveis:
@@ -143,7 +153,7 @@ with aba_vendedoras:
         
         if st.button("Registrar Nova Entrada", use_container_width=True, type="primary"):
             new_entry = {
-                "Data_Hora": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Data_Hora": get_now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Loja": loja,
                 "Tipo_Evento": "Entrada",
                 "Comprou": "-",
@@ -187,7 +197,7 @@ with aba_vendedoras:
                     st.error("Por favor, informe o motivo da não compra.")
                 else:
                     new_entry = {
-                        "Data_Hora": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "Data_Hora": get_now().strftime("%Y-%m-%d %H:%M:%S"),
                         "Loja": loja,
                         "Tipo_Evento": "Saida",
                         "Comprou": purchased,
@@ -203,7 +213,7 @@ with aba_checklist:
     st.header(f"✅ Checklist Diário - {st.session_state.loja_selecionada}")
     st.markdown("Marque as tarefas concluídas hoje.")
     
-    hoje_str = datetime.now().strftime("%Y-%m-%d")
+    hoje_str = get_now().strftime("%Y-%m-%d")
     df_check = st.session_state.checklist_data
     
     # Filtra as tarefas de hoje para a loja atual
@@ -236,7 +246,7 @@ with aba_checklist:
                 st.error("Por favor, selecione quem está preenchendo antes de salvar.")
             elif len(novas_conclusoes) > 0:
                 novos_registros = []
-                agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                agora = get_now().strftime("%Y-%m-%d %H:%M:%S")
                 for tarefa_nova in novas_conclusoes:
                     novos_registros.append({
                         "Data_Hora": agora,
@@ -260,42 +270,100 @@ with aba_admin:
     
     if not df.empty and connected:
         df['Data'] = df['Data_Hora'].str[:10]
-        hoje = datetime.now().strftime("%Y-%m-%d")
-        df_hoje = df[df['Data'] == hoje]
+        df['Data_Date'] = pd.to_datetime(df['Data'], format='%Y-%m-%d', errors='coerce').dt.date
         
-        st.subheader(f"📅 Dados de Hoje ({hoje})")
+        col_filtro, _ = st.columns([1, 2])
+        with col_filtro:
+            filtro_periodo = st.selectbox("📅 Selecione o Período:", ["Hoje", "Ontem", "Últimos 7 dias", "Mês Atual", "Tudo"])
+            
+        hoje = get_now().date()
         
+        if filtro_periodo == "Hoje":
+            df_filtrado = df[df['Data_Date'] == hoje]
+        elif filtro_periodo == "Ontem":
+            df_filtrado = df[df['Data_Date'] == (hoje - timedelta(days=1))]
+        elif filtro_periodo == "Últimos 7 dias":
+            df_filtrado = df[df['Data_Date'] >= (hoje - timedelta(days=7))]
+        elif filtro_periodo == "Mês Atual":
+            df_filtrado = df[(df['Data_Date'].apply(lambda x: x.month if pd.notna(x) else -1) == hoje.month) & 
+                             (df['Data_Date'].apply(lambda x: x.year if pd.notna(x) else -1) == hoje.year)]
+        else:
+            df_filtrado = df
+            
+        st.divider()
+        st.subheader("🏆 Destaques do Período")
+        
+        if not df_filtrado.empty:
+            loja_entradas = {}
+            loja_conversao = {}
+            
+            for loja_nome in lojas_disponiveis:
+                df_l = df_filtrado[df_filtrado["Loja"] == loja_nome]
+                e = len(df_l[df_l["Tipo_Evento"] == "Entrada"])
+                s = len(df_l[df_l["Tipo_Evento"] == "Saida"])
+                v = len(df_l[(df_l["Tipo_Evento"] == "Saida") & (df_l["Comprou"] == "Sim")])
+                loja_entradas[loja_nome] = e
+                loja_conversao[loja_nome] = (v / s * 100) if s > 0 else 0
+                
+            # Ofensor de não compra
+            df_nao_compra = df_filtrado[(df_filtrado["Tipo_Evento"] == "Saida") & (df_filtrado["Comprou"] == "Não")]
+            if not df_nao_compra.empty:
+                motivos_validos = df_nao_compra["Motivo_Nao_Compra"].replace(["-", ""], pd.NA).dropna()
+                if not motivos_validos.empty:
+                    maior_ofensor = motivos_validos.mode()[0]
+                    ofensor_count = motivos_validos.value_counts().iloc[0]
+                else:
+                    maior_ofensor = "N/A"
+                    ofensor_count = 0
+            else:
+                maior_ofensor = "Nenhum"
+                ofensor_count = 0
+                
+            maior_fluxo_loja = max(loja_entradas, key=loja_entradas.get)
+            maior_conv_loja = max(loja_conversao, key=loja_conversao.get)
+            
+            col_m1, col_m2, col_m3 = st.columns(3)
+            col_m1.metric("🏆 Maior Conversão", f"{maior_conv_loja}", f"{loja_conversao[maior_conv_loja]:.1f}%")
+            col_m2.metric("👥 Maior Fluxo", f"{maior_fluxo_loja}", f"{loja_entradas[maior_fluxo_loja]} entradas")
+            col_m3.metric("⚠️ Principal Motivo de Perda", f"{maior_ofensor}", f"{ofensor_count} vezes")
+        else:
+            st.info(f"Não há dados suficientes para o período: {filtro_periodo}.")
+            
+        st.divider()
+        st.subheader(f"📊 Detalhamento por Loja ({filtro_periodo})")
         cols = st.columns(len(lojas_disponiveis))
         
+        # O cálculo detalhado (Pessoas na Loja Agora) continua sendo com base apenas no DIA de hoje
+        # para fazer sentido (não faz sentido somar pessoas do mês todo que ainda estão lá)
+        df_hoje_real = df[df['Data_Date'] == hoje]
+        
         for i, nome_loja in enumerate(lojas_disponiveis):
-            df_loja = df_hoje[df_hoje["Loja"] == nome_loja]
+            df_loja_filtrado = df_filtrado[df_filtrado["Loja"] == nome_loja]
+            df_loja_hoje = df_hoje_real[df_hoje_real["Loja"] == nome_loja]
             
-            entradas = len(df_loja[df_loja["Tipo_Evento"] == "Entrada"])
-            saidas = len(df_loja[df_loja["Tipo_Evento"] == "Saida"])
+            entradas_hoje = len(df_loja_hoje[df_loja_hoje["Tipo_Evento"] == "Entrada"])
+            saidas_hoje = len(df_loja_hoje[df_loja_hoje["Tipo_Evento"] == "Saida"])
+            clientes_na_loja = max(0, entradas_hoje - saidas_hoje)
             
-            clientes_na_loja = max(0, entradas - saidas)
-            
-            vendas = len(df_loja[(df_loja["Tipo_Evento"] == "Saida") & (df_loja["Comprou"] == "Sim")])
-            
+            entradas = len(df_loja_filtrado[df_loja_filtrado["Tipo_Evento"] == "Entrada"])
+            saidas = len(df_loja_filtrado[df_loja_filtrado["Tipo_Evento"] == "Saida"])
+            vendas = len(df_loja_filtrado[(df_loja_filtrado["Tipo_Evento"] == "Saida") & (df_loja_filtrado["Comprou"] == "Sim")])
             taxa_conversao = (vendas / saidas * 100) if saidas > 0 else 0
             
             with cols[i]:
                 st.markdown(f"### {nome_loja}")
+                st.metric("Pessoas na Loja (AGORA)", clientes_na_loja, delta=None)
                 
-                st.metric("Pessoas na Loja Agora", clientes_na_loja, delta=None)
-                
-                st.markdown("**Resumo do Dia:**")
+                st.markdown(f"**Resumo ({filtro_periodo}):**")
                 st.write(f"- **Entradas:** {entradas}")
                 st.write(f"- **Saídas:** {saidas}")
-                st.write(f"- **Vendas (Conversão):** {vendas} vendas")
-                
+                st.write(f"- **Vendas:** {vendas}")
                 st.metric("Taxa de Conversão", f"{taxa_conversao:.1f}%")
-                
                 st.divider()
         
         st.subheader("📋 Registros Recentes (Todas as Lojas)")
         st.dataframe(
-            df.tail(15).sort_values(by="Data_Hora", ascending=False).drop(columns=['Data'], errors='ignore'), 
+            df.tail(15).sort_values(by="Data_Hora", ascending=False).drop(columns=['Data', 'Data_Date'], errors='ignore'), 
             use_container_width=True
         )
         
