@@ -58,22 +58,61 @@ def save_checklist(data):
         except Exception as e:
             st.error(f"Erro ao salvar checklist: {e}")
 
+def load_config():
+    if connected:
+        try:
+            df = conn.read(worksheet="Config", ttl=0)
+            if df.empty or 'Loja' not in df.columns:
+                return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria"])
+            return df
+        except Exception as e:
+            return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria"])
+    else:
+        return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria"])
+
 # Sempre recarregar os dados do zero para evitar sobreposição se outra loja usou
 st.session_state.data = load_data()
 st.session_state.checklist_data = load_checklist()
+st.session_state.config_data = load_config()
 
-# Configuração de listas padrão (você pode editar essas listas)
-funcionarias_disponiveis = ["Ana", "Beatriz", "Carlos", "Diana"]
+# Configuração de listas padrão
 tarefas_checklist = ["Limpeza da loja", "Organização do estoque", "Reposição de vitrine", "Fechamento de caixa", "Conferência de provadores"]
+
+# Prepara as lojas baseadas na configuração
+df_config = st.session_state.config_data
+if not df_config.empty and "Loja" in df_config.columns:
+    lojas_disponiveis = df_config["Loja"].dropna().unique().tolist()
+    if not lojas_disponiveis:
+        lojas_disponiveis = ["Cianorte Matriz"]
+else:
+    lojas_disponiveis = ["Cianorte Matriz", "Cianorte Filial 1", "Cianorte Filial 2"]
 
 # Estado para manter a loja selecionada salva usando query_params
 params = st.query_params
-loja_salva = params.get("loja", "Cianorte Matriz")
+loja_salva = params.get("loja", lojas_disponiveis[0])
 
-if "loja_selecionada" not in st.session_state:
-    st.session_state.loja_selecionada = loja_salva
+if "loja_selecionada" not in st.session_state or st.session_state.loja_selecionada not in lojas_disponiveis:
+    st.session_state.loja_selecionada = loja_salva if loja_salva in lojas_disponiveis else lojas_disponiveis[0]
 
-lojas_disponiveis = ["Cianorte Matriz", "Cianorte Filial 1", "Cianorte Filial 2"]
+# Define funcionárias para a loja atual
+if not df_config.empty and "Nome_Funcionaria" in df_config.columns:
+    df_func = df_config[df_config["Loja"] == st.session_state.loja_selecionada].dropna(subset=["Nome_Funcionaria"])
+    funcionarias_disponiveis = []
+    for _, row in df_func.iterrows():
+        nome = str(row['Nome_Funcionaria']).strip()
+        if not nome or nome.lower() == "nan":
+            continue
+        codigo = str(row['Codigo_Funcionaria']).replace('.0', '').strip() if 'Codigo_Funcionaria' in row and pd.notna(row['Codigo_Funcionaria']) else ""
+        
+        if codigo and codigo.lower() != "nan":
+            funcionarias_disponiveis.append(f"{codigo} - {nome}")
+        else:
+            funcionarias_disponiveis.append(nome)
+            
+    if not funcionarias_disponiveis:
+        funcionarias_disponiveis = ["(Sem funcionárias cadastradas)"]
+else:
+    funcionarias_disponiveis = ["Ana", "Beatriz", "Carlos", "Diana"]
 
 st.title("🛍️ Controle de Fluxo - Lojas Cianorte")
 
