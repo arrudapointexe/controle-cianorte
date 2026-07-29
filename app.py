@@ -93,8 +93,8 @@ df_config = st.session_state.config_data
 
 # Configuração do Checklist
 if not df_config.empty and "Tarefa_Checklist" in df_config.columns:
-    tarefas_checklist = df_config["Tarefa_Checklist"].dropna().astype(str).tolist()
-    tarefas_checklist = [t.strip() for t in tarefas_checklist if t.strip() != ""]
+    tarefas_checklist = df_config["Tarefa_Checklist"].dropna().astype(str).unique().tolist()
+    tarefas_checklist = list(dict.fromkeys([t.strip() for t in tarefas_checklist if t.strip() != ""]))
     if not tarefas_checklist:
         tarefas_checklist = ["Limpeza da loja", "Organização do estoque", "Reposição de vitrine", "Fechamento de caixa", "Conferência de provadores"]
 else:
