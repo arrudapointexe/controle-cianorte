@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-from streamlit_gsheets import GSheetsConnection
+from sqlalchemy import text
 import os
 
 st.set_page_config(page_title="Cianorte - Controle de Fluxo", page_icon="🛍️", layout="wide")
@@ -9,43 +9,46 @@ st.set_page_config(page_title="Cianorte - Controle de Fluxo", page_icon="🛍️
 def get_now():
     return datetime.now() - timedelta(hours=3)
 
-# Inicializa a conexão com o Google Sheets
+# Inicializa a conexão com o PostgreSQL
 try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    conn = st.connection("postgresql", type="sql")
     connected = True
 except Exception as e:
     connected = False
-    st.error("⚠️ As credenciais do Google Sheets não foram encontradas. Siga o tutorial para configurar.")
+    st.error(f"⚠️ As credenciais do banco de dados não foram configuradas corretamente. Erro: {e}")
 
 def load_data():
     if connected:
         try:
-            # ttl=0 garante que os dados estão sempre atualizados e não cacheados (bom para múltiplas lojas)
-            df = conn.read(worksheet="Página1", ttl=0)
-            
-            # Se a planilha estiver vazia, cria a estrutura
-            if df.empty or 'Data_Hora' not in df.columns:
+            # ttl=0 garante que os dados estão sempre atualizados e não cacheados
+            df = conn.query("SELECT * FROM eventos ORDER BY id ASC", ttl=0)
+            if df.empty:
                 return pd.DataFrame(columns=["Data_Hora", "Loja", "Tipo_Evento", "Comprou", "Motivo_Nao_Compra", "Observacoes", "Funcionaria"])
             return df
         except Exception as e:
-            st.warning("⚠️ Planilha não encontrada ou vazia. Certifique-se de que compartilhou a planilha com o e-mail do bot.")
+            st.warning(f"⚠️ Tabela de eventos não encontrada ou vazia. {e}")
             return pd.DataFrame(columns=["Data_Hora", "Loja", "Tipo_Evento", "Comprou", "Motivo_Nao_Compra", "Observacoes", "Funcionaria"])
     else:
         return pd.DataFrame(columns=["Data_Hora", "Loja", "Tipo_Evento", "Comprou", "Motivo_Nao_Compra", "Observacoes", "Funcionaria"])
 
-def save_data(data):
+def insert_evento(entry):
     if connected:
         try:
-            conn.update(worksheet="Página1", data=data)
+            with conn.session as s:
+                s.execute(
+                    text('INSERT INTO eventos ("Data_Hora", "Loja", "Tipo_Evento", "Comprou", "Motivo_Nao_Compra", "Observacoes", "Funcionaria") VALUES (:Data_Hora, :Loja, :Tipo_Evento, :Comprou, :Motivo_Nao_Compra, :Observacoes, :Funcionaria)'),
+                    entry
+                )
+                s.commit()
             st.cache_data.clear() # Limpa o cache para que a próxima leitura venha atualizada
         except Exception as e:
-            st.error(f"Erro ao salvar na nuvem: {e}")
+            st.error(f"Erro ao salvar no banco de dados: {e}")
 
 def load_checklist():
     if connected:
         try:
-            df = conn.read(worksheet="Checklist", ttl=0)
-            if df.empty or 'Data_Hora' not in df.columns:
+            df = conn.query("SELECT * FROM checklists ORDER BY id ASC", ttl=0)
+            if df.empty:
                 return pd.DataFrame(columns=["Data_Hora", "Loja", "Funcionaria", "Tarefa", "Status"])
             return df
         except Exception as e:
@@ -53,10 +56,16 @@ def load_checklist():
     else:
         return pd.DataFrame(columns=["Data_Hora", "Loja", "Funcionaria", "Tarefa", "Status"])
 
-def save_checklist(data):
+def insert_checklists(entries):
     if connected:
         try:
-            conn.update(worksheet="Checklist", data=data)
+            with conn.session as s:
+                for entry in entries:
+                    s.execute(
+                        text('INSERT INTO checklists ("Data_Hora", "Loja", "Funcionaria", "Tarefa", "Status") VALUES (:Data_Hora, :Loja, :Funcionaria, :Tarefa, :Status)'),
+                        entry
+                    )
+                s.commit()
             st.cache_data.clear()
         except Exception as e:
             st.error(f"Erro ao salvar checklist: {e}")
@@ -64,14 +73,15 @@ def save_checklist(data):
 def load_config():
     if connected:
         try:
-            df = conn.read(worksheet="Config", ttl=0)
-            if df.empty or 'Loja' not in df.columns:
-                return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria"])
+            df = conn.query("SELECT * FROM configs ORDER BY id ASC", ttl=0)
+            if df.empty:
+                return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria", "Tarefa_Checklist"])
             return df
         except Exception as e:
-            return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria"])
+            return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria", "Tarefa_Checklist"])
     else:
-        return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria"])
+        return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria", "Tarefa_Checklist"])
+
 
 # Sempre recarregar os dados do zero para evitar sobreposição se outra loja usou
 st.session_state.data = load_data()
@@ -161,9 +171,9 @@ with aba_vendedoras:
                 "Observacoes": "-",
                 "Funcionaria": "-"
             }
-            # Concatena o novo registro e salva
+            # Concatena o novo registro e salva no estado
             st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([new_entry])], ignore_index=True)
-            save_data(st.session_state.data)
+            insert_evento(new_entry)
             st.success(f"Entrada registrada para {loja}!")
             
     with col_saida:
@@ -206,7 +216,7 @@ with aba_vendedoras:
                         "Funcionaria": funcionaria
                     }
                     st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([new_entry])], ignore_index=True)
-                    save_data(st.session_state.data)
+                    insert_evento(new_entry)
                     st.success(f"Saída registrada para {loja}!")
 
 with aba_checklist:
@@ -259,7 +269,7 @@ with aba_checklist:
                     })
                 
                 st.session_state.checklist_data = pd.concat([st.session_state.checklist_data, pd.DataFrame(novos_registros)], ignore_index=True)
-                save_checklist(st.session_state.checklist_data)
+                insert_checklists(novos_registros)
                 st.success(f"{len(novas_conclusoes)} tarefa(s) salva(s) com sucesso!")
                 st.rerun()
             else:
@@ -271,8 +281,9 @@ with aba_admin:
     df = st.session_state.data
     
     if not df.empty and connected:
-        df['Data'] = df['Data_Hora'].str[:10]
-        df['Data_Date'] = pd.to_datetime(df['Data'], format='%Y-%m-%d', errors='coerce').dt.date
+        df['Data_Hora'] = pd.to_datetime(df['Data_Hora'], errors='coerce')
+        df['Data'] = df['Data_Hora'].dt.strftime('%Y-%m-%d')
+        df['Data_Date'] = df['Data_Hora'].dt.date
         
         col_filtro, _ = st.columns([1, 2])
         with col_filtro:
