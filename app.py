@@ -181,7 +181,7 @@ with aba_vendedoras:
         st.markdown("Preencha ao cliente sair da loja.")
         
         with st.form("form_saida", clear_on_submit=True):
-            funcionaria = st.selectbox("Quem está registrando?", ["Selecione"] + funcionarias_disponiveis)
+            funcionaria = st.text_input("Nome da funcionária atendendo")
             
             purchased = st.radio("O cliente realizou uma compra?", ("Sim", "Não"), horizontal=True)
             
@@ -201,8 +201,8 @@ with aba_vendedoras:
             submit_saida = st.form_submit_button("Registrar Saída", use_container_width=True)
             
             if submit_saida:
-                if funcionaria == "Selecione":
-                    st.error("Por favor, selecione quem está registrando a saída.")
+                if not funcionaria.strip():
+                    st.error("Por favor, digite o nome de quem está registrando a saída.")
                 elif purchased == "Não" and reason == "":
                     st.error("Por favor, informe o motivo da não compra.")
                 else:
@@ -239,7 +239,7 @@ with aba_checklist:
     tarefas_concluidas_hoje = df_loja_hoje[df_loja_hoje["Status"] == "Concluído"]["Tarefa"].tolist()
     
     with st.form("form_checklist", clear_on_submit=True):
-        funcionaria_check = st.selectbox("Quem está preenchendo?", ["Selecione"] + funcionarias_disponiveis)
+        funcionaria_check = st.text_input("Nome da funcionária")
         
         novas_conclusoes = []
         for tarefa in tarefas_checklist:
@@ -254,8 +254,8 @@ with aba_checklist:
         submit_check = st.form_submit_button("Salvar Checklist", use_container_width=True)
         
         if submit_check:
-            if funcionaria_check == "Selecione" and len(novas_conclusoes) > 0:
-                st.error("Por favor, selecione quem está preenchendo antes de salvar.")
+            if not funcionaria_check.strip() and len(novas_conclusoes) > 0:
+                st.error("Por favor, digite quem está preenchendo antes de salvar.")
             elif len(novas_conclusoes) > 0:
                 novos_registros = []
                 agora = get_now().strftime("%Y-%m-%d %H:%M:%S")
