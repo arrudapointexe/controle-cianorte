@@ -82,7 +82,6 @@ def load_config():
     else:
         return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria", "Tarefa_Checklist"])
 
-
 # Sempre recarregar os dados do zero para evitar sobreposição se outra loja usou
 st.session_state.data = load_data()
 st.session_state.checklist_data = load_checklist()
@@ -137,7 +136,7 @@ else:
 st.title("🛍️ Controle de Fluxo - Lojas Cianorte")
 
 if not connected:
-    st.info("Aguardando configuração do Google Sheets... Siga o passo a passo enviado.")
+    st.info("Aguardando configuração do PostgreSQL... Verifique as credenciais.")
 
 # Criação das abas
 aba_vendedoras, aba_checklist, aba_admin = st.tabs(["👩‍💼 Área das Vendedoras", "✅ Checklist Diário", "📊 Área Administrativa"])
@@ -171,7 +170,6 @@ with aba_vendedoras:
                 "Observacoes": "-",
                 "Funcionaria": "-"
             }
-            # Concatena o novo registro e salva no estado
             st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([new_entry])], ignore_index=True)
             insert_evento(new_entry)
             st.success(f"Entrada registrada para {loja}!")
@@ -223,13 +221,10 @@ with aba_checklist:
     st.header(f"✅ Checklist Diário - {st.session_state.loja_selecionada}")
     st.markdown("Marque as tarefas concluídas hoje. *(O dia reinicia às 8h da manhã)*")
     
-    # O dia lógico do checklist só vira às 8:00 da manhã
     logical_date = (get_now() - timedelta(hours=8)).strftime("%Y-%m-%d")
     df_check = st.session_state.checklist_data
     
-    # Filtra as tarefas de hoje para a loja atual
     if not df_check.empty:
-        # Calcula a data lógica para cada registro
         df_check['Data_Logica'] = pd.to_datetime(df_check['Data_Hora'], format="%Y-%m-%d %H:%M:%S", errors='coerce').apply(lambda x: (x - timedelta(hours=8)).strftime("%Y-%m-%d") if pd.notna(x) else "")
         df_hoje = df_check[df_check["Data_Logica"] == logical_date]
         df_loja_hoje = df_hoje[df_hoje["Loja"] == st.session_state.loja_selecionada]
@@ -285,12 +280,22 @@ with aba_admin:
         df['Data'] = df['Data_Hora'].dt.strftime('%Y-%m-%d')
         df['Data_Date'] = df['Data_Hora'].dt.date
         
-        col_filtro, _ = st.columns([1, 2])
-        with col_filtro:
-            filtro_periodo = st.selectbox("📅 Selecione o Período:", ["Hoje", "Ontem", "Últimos 7 dias", "Mês Atual", "Tudo"])
+        col_filtro_data, col_calendario, col_filtro_loja = st.columns([1, 1, 1])
+        
+        with col_filtro_data:
+            filtro_periodo = st.selectbox(
+                "📅 Selecione o Período:", 
+                ["Hoje", "Ontem", "Últimos 7 dias", "Mês Atual", "Período Personalizado", "Tudo"]
+            )
+            
+        with col_filtro_loja:
+            # Lista as lojas e adiciona a opção de ver todas
+            opcoes_loja_admin = ["Todas as Lojas"] + lojas_disponiveis
+            loja_selecionada_admin = st.selectbox("📍 Filtrar por Loja:", opcoes_loja_admin)
             
         hoje = get_now().date()
         
+        # 1. Filtro de Data
         if filtro_periodo == "Hoje":
             df_filtrado = df[df['Data_Date'] == hoje]
         elif filtro_periodo == "Ontem":
@@ -300,8 +305,28 @@ with aba_admin:
         elif filtro_periodo == "Mês Atual":
             df_filtrado = df[(df['Data_Date'].apply(lambda x: x.month if pd.notna(x) else -1) == hoje.month) & 
                              (df['Data_Date'].apply(lambda x: x.year if pd.notna(x) else -1) == hoje.year)]
+        elif filtro_periodo == "Período Personalizado":
+            with col_calendario:
+                datas_selecionadas = st.date_input(
+                    "Selecione o intervalo (Início - Fim):",
+                    value=(hoje - timedelta(days=7), hoje),
+                    max_value=hoje,
+                    format="DD/MM/YYYY"
+                )
+            if len(datas_selecionadas) == 2:
+                data_inicio, data_fim = datas_selecionadas
+                df_filtrado = df[(df['Data_Date'] >= data_inicio) & (df['Data_Date'] <= data_fim)]
+            else:
+                df_filtrado = df[df['Data_Date'] == datas_selecionadas[0]]
         else:
             df_filtrado = df
+            
+        # 2. Filtro de Loja
+        if loja_selecionada_admin != "Todas as Lojas":
+            df_filtrado = df_filtrado[df_filtrado["Loja"] == loja_selecionada_admin]
+            lojas_para_exibir = [loja_selecionada_admin]
+        else:
+            lojas_para_exibir = lojas_disponiveis
             
         st.divider()
         st.subheader("🏆 Destaques do Período")
@@ -310,7 +335,7 @@ with aba_admin:
             loja_entradas = {}
             loja_conversao = {}
             
-            for loja_nome in lojas_disponiveis:
+            for loja_nome in lojas_para_exibir:
                 df_l = df_filtrado[df_filtrado["Loja"] == loja_nome]
                 e = len(df_l[df_l["Tipo_Evento"] == "Entrada"])
                 s = len(df_l[df_l["Tipo_Evento"] == "Saida"])
@@ -318,7 +343,6 @@ with aba_admin:
                 loja_entradas[loja_nome] = e
                 loja_conversao[loja_nome] = (v / s * 100) if s > 0 else 0
                 
-            # Ofensor de não compra
             df_nao_compra = df_filtrado[(df_filtrado["Tipo_Evento"] == "Saida") & (df_filtrado["Comprou"] == "Não")]
             if not df_nao_compra.empty:
                 motivos_validos = df_nao_compra["Motivo_Nao_Compra"].replace(["-", ""], pd.NA).dropna()
@@ -332,25 +356,33 @@ with aba_admin:
                 maior_ofensor = "Nenhum"
                 ofensor_count = 0
                 
-            maior_fluxo_loja = max(loja_entradas, key=loja_entradas.get)
-            maior_conv_loja = max(loja_conversao, key=loja_conversao.get)
+            maior_fluxo_loja = max(loja_entradas, key=loja_entradas.get) if loja_entradas else "N/A"
+            maior_conv_loja = max(loja_conversao, key=loja_conversao.get) if loja_conversao else "N/A"
             
             col_m1, col_m2, col_m3 = st.columns(3)
-            col_m1.metric("🏆 Maior Conversão", f"{maior_conv_loja}", f"{loja_conversao[maior_conv_loja]:.1f}%")
-            col_m2.metric("👥 Maior Fluxo", f"{maior_fluxo_loja}", f"{loja_entradas[maior_fluxo_loja]} entradas")
+            
+            # Dinâmica do Card: Se for todas as lojas mostra a "Vencedora", se for 1 loja, mostra o valor dela.
+            if loja_selecionada_admin == "Todas as Lojas":
+                col_m1.metric("🏆 Maior Conversão (Loja)", f"{maior_conv_loja}", f"{loja_conversao.get(maior_conv_loja, 0):.1f}%")
+                col_m2.metric("👥 Maior Fluxo (Loja)", f"{maior_fluxo_loja}", f"{loja_entradas.get(maior_fluxo_loja, 0)} entradas")
+            else:
+                col_m1.metric("🏆 Taxa de Conversão", f"{loja_selecionada_admin}", f"{loja_conversao.get(loja_selecionada_admin, 0):.1f}%")
+                col_m2.metric("👥 Fluxo Total", f"{loja_selecionada_admin}", f"{loja_entradas.get(loja_selecionada_admin, 0)} entradas")
+                
             col_m3.metric("⚠️ Principal Motivo de Perda", f"{maior_ofensor}", f"{ofensor_count} vezes")
         else:
-            st.info(f"Não há dados suficientes para o período: {filtro_periodo}.")
+            st.info(f"Não há dados suficientes para os filtros selecionados.")
             
         st.divider()
         st.subheader(f"📊 Detalhamento por Loja ({filtro_periodo})")
-        cols = st.columns(len(lojas_disponiveis))
         
-        # O cálculo detalhado (Pessoas na Loja Agora) continua sendo com base apenas no DIA de hoje
-        # para fazer sentido (não faz sentido somar pessoas do mês todo que ainda estão lá)
+        # Ajusta as colunas caso seja apenas uma loja selecionada
+        num_cols = len(lojas_para_exibir) if len(lojas_para_exibir) > 0 else 1
+        cols = st.columns(num_cols)
+        
         df_hoje_real = df[df['Data_Date'] == hoje]
         
-        for i, nome_loja in enumerate(lojas_disponiveis):
+        for i, nome_loja in enumerate(lojas_para_exibir):
             df_loja_filtrado = df_filtrado[df_filtrado["Loja"] == nome_loja]
             df_loja_hoje = df_hoje_real[df_hoje_real["Loja"] == nome_loja]
             
@@ -372,8 +404,10 @@ with aba_admin:
                 st.write(f"- **Saídas:** {saidas}")
                 st.write(f"- **Vendas:** {vendas}")
                 st.metric("Taxa de Conversão", f"{taxa_conversao:.1f}%")
-                st.divider()
+                if loja_selecionada_admin == "Todas as Lojas":
+                    st.divider()
         
+        st.divider()
         st.subheader("📋 Tarefas Pendentes do Checklist (Hoje)")
         
         df_check_admin = st.session_state.checklist_data
@@ -385,8 +419,8 @@ with aba_admin:
         else:
             df_check_hoje_admin = pd.DataFrame(columns=["Data_Hora", "Loja", "Funcionaria", "Tarefa", "Status"])
             
-        cols_check = st.columns(len(lojas_disponiveis))
-        for i, nome_loja in enumerate(lojas_disponiveis):
+        cols_check = st.columns(num_cols)
+        for i, nome_loja in enumerate(lojas_para_exibir):
             df_loja_check = df_check_hoje_admin[df_check_hoje_admin["Loja"] == nome_loja]
             tarefas_concluidas = df_loja_check[df_loja_check["Status"] == "Concluído"]["Tarefa"].tolist()
             
@@ -404,9 +438,10 @@ with aba_admin:
                         st.info("Nenhuma tarefa configurada.")
         
         st.divider()
-        st.subheader("📋 Registros Recentes (Todas as Lojas)")
+        st.subheader(f"📋 Registros Recentes ({'Todas' if loja_selecionada_admin == 'Todas as Lojas' else loja_selecionada_admin})")
+        # Mostrar apenas os dados que já passaram pelo filtro de loja e data
         st.dataframe(
-            df.tail(15).sort_values(by="Data_Hora", ascending=False).drop(columns=['Data', 'Data_Date'], errors='ignore'), 
+            df_filtrado.tail(15).sort_values(by="Data_Hora", ascending=False).drop(columns=['Data', 'Data_Date'], errors='ignore'), 
             use_container_width=True
         )
         
