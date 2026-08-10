@@ -24,6 +24,11 @@ def load_data():
             df = conn.query("SELECT * FROM eventos ORDER BY id ASC", ttl=0)
             if df.empty:
                 return pd.DataFrame(columns=["Data_Hora", "Loja", "Tipo_Evento", "Comprou", "Motivo_Nao_Compra", "Observacoes", "Funcionaria"])
+            
+            # Garante que dados históricos fiquem em uppercase
+            if "Funcionaria" in df.columns:
+                df["Funcionaria"] = df["Funcionaria"].str.upper()
+                
             return df
         except Exception as e:
             st.warning(f"⚠️ Tabela de eventos não encontrada ou vazia. {e}")
@@ -50,6 +55,11 @@ def load_checklist():
             df = conn.query("SELECT * FROM checklists ORDER BY id ASC", ttl=0)
             if df.empty:
                 return pd.DataFrame(columns=["Data_Hora", "Loja", "Funcionaria", "Tarefa", "Status"])
+            
+            # Garante que dados históricos fiquem em uppercase
+            if "Funcionaria" in df.columns:
+                df["Funcionaria"] = df["Funcionaria"].str.upper()
+                
             return df
         except Exception as e:
             return pd.DataFrame(columns=["Data_Hora", "Loja", "Funcionaria", "Tarefa", "Status"])
@@ -139,7 +149,7 @@ if not connected:
     st.info("Aguardando configuração do PostgreSQL... Verifique as credenciais.")
 
 # Criação das abas
-aba_vendedoras, aba_checklist, aba_admin = st.tabs(["👩‍💼 Área das Vendedoras", "✅ Checklist Diário", "📊 Área Administrativa"])
+aba_vendedoras, aba_checklist, aba_admin = st.tabs(["👩💼 Área das Vendedoras", "✅ Checklist Diário", "📊 Área Administrativa"])
 
 with aba_vendedoras:
     st.header("Registro de Movimentação")
@@ -211,7 +221,8 @@ with aba_vendedoras:
                         "Comprou": purchased,
                         "Motivo_Nao_Compra": reason if purchased == "Não" else "-",
                         "Observacoes": notes,
-                        "Funcionaria": funcionaria
+                        # SALVANDO NOME EM CAIXA ALTA
+                        "Funcionaria": funcionaria.strip().upper()
                     }
                     st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([new_entry])], ignore_index=True)
                     insert_evento(new_entry)
@@ -258,7 +269,8 @@ with aba_checklist:
                     novos_registros.append({
                         "Data_Hora": agora,
                         "Loja": st.session_state.loja_selecionada,
-                        "Funcionaria": funcionaria_check,
+                        # SALVANDO NOME EM CAIXA ALTA
+                        "Funcionaria": funcionaria_check.strip().upper(),
                         "Tarefa": tarefa_nova,
                         "Status": "Concluído"
                     })
