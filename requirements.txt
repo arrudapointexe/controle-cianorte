@@ -1,6 +1,8 @@
-psycopg
 streamlit
-starlette<0.39.0
 pandas
 SQLAlchemy
 psycopg2-binary
+openpyxl
+requests
+supabase
+psycopg-binary
