@@ -380,28 +380,28 @@ with aba_whatsapp:
             if not df_loja_whats.empty:
                 df_loja_whats = df_loja_whats.sort_values(by="Data_Hora", ascending=False)
                 
-                for idx, row in df_loja_whats.iterrows():
+                                for idx, row in df_loja_whats.iterrows():
                     icone = "🟢" if row.get("Status_Contato", "Pendente") == "Pendente" else "✅"
+                    # CORREÇÃO DA DATA: coloquei o str() em volta do row['Data_Hora'] para não dar erro
                     with st.expander(f"{icone} {row['Nome_Cliente']} - {row['Objetivo_Reenvio']} ({str(row['Data_Hora'])[:10]})"):
                         st.write(f"**Telefone:** {row['Telefone']}")
                         st.write(f"**Motivo Inicial:** {row['Motivo_Contato']}")
                         st.write(f"**Observações:** {row['Observacoes']}")
                         st.write(f"**Atendido por:** {row['Funcionaria']}")
                         
-                        # Definir mensagens padrão baseadas no objetivo
-                        nome_cliente = str(row['Nome_Cliente']).split(" ")[0]
-                        loja_nome = str(row['Loja'])
+                        # Definir mensagens padrão baseadas no objetivo (Decoradas e sem nome da loja)
+                        nome_cliente = str(row['Nome_Cliente']).split(" ")[0].title()
                         func = str(row['Funcionaria']).capitalize()
                         objetivo = str(row['Objetivo_Reenvio'])
                         
                         if objetivo == "Satisfação (Pós-venda)":
-                            msg = f"Olá {nome_cliente}, tudo bem? Aqui é a {func} da {loja_nome}. Estou passando para saber se deu tudo certo com a sua compra e se você gostou das suas peças! Qualquer dúvida, estamos à disposição. 🥰"
+                            msg = f"Oii {nome_cliente}, tudo bem maravilhosa? ✨ Aqui é a {func} da Cianorte! Passando pra saber se você amou as suas escolhas e se deu tudo certinho com as peças! 💖 Qualquer dúvida, estou super à disposição! Um beijo! 😘🛍️"
                         elif objetivo == "Tentativa de Compra (Não finalizou)":
-                            msg = f"Oi {nome_cliente}, tudo bem? Aqui é a {func} da {loja_nome}. Vi que você estava interessada em algumas de nossas peças recentemente. Recebemos novidades incríveis e lembrei de você! Gostaria de ver algumas opções sem compromisso? 👗✨"
+                            msg = f"Oii {nome_cliente}, tudo bem flor? 🌸 Aqui é a {func} da Cianorte! Lembrei de você porque recebemos umas novidades MARAVILHOSAS na loja! 🤩✨ Como você estava olhando umas peças com a gente, pensei em te mandar algumas opções exclusivas que acabaram de chegar! Posso te mostrar sem compromisso? Tenho certeza que você vai amar! 💖👗"
                         elif objetivo == "Recompra (Ofertas futuras)":
-                            msg = f"Olá {nome_cliente}, como vai? Aqui é a {func} da {loja_nome}. Estamos com peças novas e promoções exclusivas que são a sua cara! Posso te mandar algumas fotos para você dar uma olhadinha? 😍"
+                            msg = f"Oii {nome_cliente}, como você está? ✨ Aqui é a {func} da Cianorte! Passando pra te dar em primeira mão uma super novidade: estamos com peças lindíssimas e promoções imperdíveis que são a SUA cara! 😍🛍️ Posso te mandar algumas fotos pra você conferir? Preparamos tudo com muito carinho! ❤️✨"
                         else:
-                            msg = f"Olá {nome_cliente}, tudo bem? Aqui é a {func} da {loja_nome}."
+                            msg = f"Oii {nome_cliente}, tudo bem maravilhosa? ✨ Aqui é a {func} da Cianorte! 💖"
                             
                         st.write(f"**Sugestão de Mensagem:**")
                         st.code(msg, language="text")
