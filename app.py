@@ -380,7 +380,7 @@ with aba_whatsapp:
             if not df_loja_whats.empty:
                 df_loja_whats = df_loja_whats.sort_values(by="Data_Hora", ascending=False)
                 
-                                for idx, row in df_loja_whats.iterrows():
+                for idx, row in df_loja_whats.iterrows():
                     icone = "🟢" if row.get("Status_Contato", "Pendente") == "Pendente" else "✅"
                     # CORREÇÃO DA DATA: coloquei o str() em volta do row['Data_Hora'] para não dar erro
                     with st.expander(f"{icone} {row['Nome_Cliente']} - {row['Objetivo_Reenvio']} ({str(row['Data_Hora'])[:10]})"):
