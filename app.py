@@ -382,7 +382,7 @@ with aba_whatsapp:
                 
                 for idx, row in df_loja_whats.iterrows():
                     icone = "🟢" if row.get("Status_Contato", "Pendente") == "Pendente" else "✅"
-                    with st.expander(f"{icone} {row['Nome_Cliente']} - {row['Objetivo_Reenvio']} ({row['Data_Hora'][:10]})"):
+                    with st.expander(f"{icone} {row['Nome_Cliente']} - {row['Objetivo_Reenvio']} ({str(row['Data_Hora'])[:10]})"):
                         st.write(f"**Telefone:** {row['Telefone']}")
                         st.write(f"**Motivo Inicial:** {row['Motivo_Contato']}")
                         st.write(f"**Observações:** {row['Observacoes']}")
