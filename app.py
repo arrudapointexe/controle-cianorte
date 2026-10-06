@@ -412,10 +412,10 @@ with aba_whatsapp:
                             if len(numero_limpo) <= 11:
                                 numero_limpo = "55" + numero_limpo
                                 
+                                                        # Usando a API direta em vez do wa.me evita que o navegador quebre os emojis
                             msg_encoded = urllib.parse.quote(msg)
-                            link_whats = f"https://wa.me/{numero_limpo}?text={msg_encoded}"
+                            link_whats = f"https://api.whatsapp.com/send?phone={numero_limpo}&text={msg_encoded}"
                             
-                            # USANDO O BOTÃO OFICIAL DO STREAMLIT EM VEZ DE MARKDOWN:
                             st.link_button("💬 Chamar no WhatsApp com a mensagem pronta", link_whats, type="primary")
             else:
                 st.info("Nenhum contato registrado para esta loja.")
