@@ -393,15 +393,14 @@ with aba_whatsapp:
                         func = str(row['Funcionaria']).capitalize()
                         objetivo = str(row['Objetivo_Reenvio'])
                         
-                        # Usando os códigos Unicode para garantir que o emoji funciona em qualquer codificação de texto
                         if objetivo == "Satisfação (Pós-venda)":
-                            msg = f"Oii {nome_cliente}, tudo bem maravilhosa? \u2728 Aqui é a {func} da Cianorte! Passando pra saber se você amou as suas escolhas e se deu tudo certinho com as peças! \U0001f496 Qualquer dúvida, estou super à disposição! Um beijo! \U0001f618\U0001f6cd\ufe0f"
+                            msg = f"Oii {nome_cliente}, tudo bem maravilhosa? ✨ Aqui é a {func} da Cianorte! Passando pra saber se você amou as suas escolhas e se deu tudo certinho com as peças! 💖 Qualquer dúvida, estou super à disposição! Um beijo! 😘🛍️"
                         elif objetivo == "Tentativa de Compra (Não finalizou)":
-                            msg = f"Oii {nome_cliente}, tudo bem flor? \U0001f338 Aqui é a {func} da Cianorte! Lembrei de você porque recebemos umas novidades MARAVILHOSAS na loja! \U0001f929\u2728 Como você estava olhando umas peças com a gente, pensei em te mandar algumas opções exclusivas que acabaram de chegar! Posso te mostrar sem compromisso? Tenho certeza que você vai amar! \U0001f496\U0001f457"
+                            msg = f"Oii {nome_cliente}, tudo bem flor? 🌸 Aqui é a {func} da Cianorte! Lembrei de você porque recebemos umas novidades MARAVILHOSAS na loja! 🤩✨ Como você estava olhando umas peças com a gente, pensei em te mandar algumas opções exclusivas que acabaram de chegar! Posso te mostrar sem compromisso? Tenho certeza que você vai amar! 💖👗"
                         elif objetivo == "Recompra (Ofertas futuras)":
-                            msg = f"Oii {nome_cliente}, como você está? \u2728 Aqui é a {func} da Cianorte! Passando pra te dar em primeira mão uma super novidade: estamos com peças lindíssimas e promoções imperdíveis que são a SUA cara! \U0001f60d\U0001f6cd\ufe0f Posso te mandar algumas fotos pra você conferir? Preparamos tudo com muito carinho! \u2764\ufe0f\u2728"
+                            msg = f"Oii {nome_cliente}, como você está? ✨ Aqui é a {func} da Cianorte! Passando pra te dar em primeira mão uma super novidade: estamos com peças lindíssimas e promoções imperdíveis que são a SUA cara! 😍🛍️ Posso te mandar algumas fotos pra você conferir? Preparamos tudo com muito carinho! ❤️✨"
                         else:
-                            msg = f"Oii {nome_cliente}, tudo bem maravilhosa? \u2728 Aqui é a {func} da Cianorte! \U0001f496"
+                            msg = f"Oii {nome_cliente}, tudo bem maravilhosa? ✨ Aqui é a {func} da Cianorte! 💖"
                             
                         st.write(f"**Sugestão de Mensagem:**")
                         st.code(msg, language="text")
@@ -409,7 +408,6 @@ with aba_whatsapp:
                         # Link para chamar no whatsapp
                         numero_limpo = ''.join(filter(str.isdigit, str(row['Telefone'])))
                         if numero_limpo:
-                            # Se não tiver DDI, coloca 55 (Brasil) por padrão para facilitar
                             if len(numero_limpo) <= 11:
                                 numero_limpo = "55" + numero_limpo
                                 
