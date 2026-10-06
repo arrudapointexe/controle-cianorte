@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from sqlalchemy import text
 import os
+import urllib.parse
 
 st.set_page_config(page_title="Cianorte - Controle de Fluxo", page_icon="🛍️", layout="wide")
 
@@ -181,7 +182,7 @@ st.title("🛍️ Controle de Fluxo - Lojas Cianorte")
 if not connected:
     st.info("Aguardando configuração do PostgreSQL... Verifique as credenciais.")
 
-# Criação das abas (MODIFICADO PARA ADICIONAR ABA WHATSAPP)
+# Criação das abas
 aba_vendedoras, aba_checklist, aba_whatsapp, aba_admin = st.tabs([
     "👩‍💼 Área das Vendedoras", 
     "✅ Checklist Diário", 
@@ -259,7 +260,6 @@ with aba_vendedoras:
                         "Comprou": purchased,
                         "Motivo_Nao_Compra": reason if purchased == "Não" else "-",
                         "Observacoes": notes,
-                        # SALVANDO NOME EM CAIXA ALTA
                         "Funcionaria": funcionaria.strip().upper()
                     }
                     st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([new_entry])], ignore_index=True)
@@ -307,7 +307,6 @@ with aba_checklist:
                     novos_registros.append({
                         "Data_Hora": agora,
                         "Loja": st.session_state.loja_selecionada,
-                        # SALVANDO NOME EM CAIXA ALTA
                         "Funcionaria": funcionaria_check.strip().upper(),
                         "Tarefa": tarefa_nova,
                         "Status": "Concluído"
@@ -379,10 +378,8 @@ with aba_whatsapp:
         if not df_whats.empty:
             df_loja_whats = df_whats[df_whats["Loja"] == st.session_state.loja_selecionada]
             if not df_loja_whats.empty:
-                # Ordenar para mostrar os mais recentes primeiro
                 df_loja_whats = df_loja_whats.sort_values(by="Data_Hora", ascending=False)
                 
-                # Exibição bonita usando expander para cada cliente
                 for idx, row in df_loja_whats.iterrows():
                     icone = "🟢" if row.get("Status_Contato", "Pendente") == "Pendente" else "✅"
                     with st.expander(f"{icone} {row['Nome_Cliente']} - {row['Objetivo_Reenvio']} ({row['Data_Hora'][:10]})"):
@@ -391,14 +388,34 @@ with aba_whatsapp:
                         st.write(f"**Observações:** {row['Observacoes']}")
                         st.write(f"**Atendido por:** {row['Funcionaria']}")
                         
+                        # Definir mensagens padrão baseadas no objetivo
+                        nome_cliente = str(row['Nome_Cliente']).split(" ")[0]
+                        loja_nome = str(row['Loja'])
+                        func = str(row['Funcionaria']).capitalize()
+                        objetivo = str(row['Objetivo_Reenvio'])
+                        
+                        if objetivo == "Satisfação (Pós-venda)":
+                            msg = f"Olá {nome_cliente}, tudo bem? Aqui é a {func} da {loja_nome}. Estou passando para saber se deu tudo certo com a sua compra e se você gostou das suas peças! Qualquer dúvida, estamos à disposição. 🥰"
+                        elif objetivo == "Tentativa de Compra (Não finalizou)":
+                            msg = f"Oi {nome_cliente}, tudo bem? Aqui é a {func} da {loja_nome}. Vi que você estava interessada em algumas de nossas peças recentemente. Recebemos novidades incríveis e lembrei de você! Gostaria de ver algumas opções sem compromisso? 👗✨"
+                        elif objetivo == "Recompra (Ofertas futuras)":
+                            msg = f"Olá {nome_cliente}, como vai? Aqui é a {func} da {loja_nome}. Estamos com peças novas e promoções exclusivas que são a sua cara! Posso te mandar algumas fotos para você dar uma olhadinha? 😍"
+                        else:
+                            msg = f"Olá {nome_cliente}, tudo bem? Aqui é a {func} da {loja_nome}."
+                            
+                        st.write(f"**Sugestão de Mensagem:**")
+                        st.code(msg, language="text")
+                        
                         # Link para chamar no whatsapp
                         numero_limpo = ''.join(filter(str.isdigit, str(row['Telefone'])))
                         if numero_limpo:
                             # Se não tiver DDI, coloca 55 (Brasil) por padrão para facilitar
                             if len(numero_limpo) <= 11:
                                 numero_limpo = "55" + numero_limpo
-                            link_whats = f"https://wa.me/{numero_limpo}"
-                            st.markdown(f"[💬 Chamar no WhatsApp]({link_whats})")
+                                
+                            msg_encoded = urllib.parse.quote(msg)
+                            link_whats = f"https://wa.me/{numero_limpo}?text={msg_encoded}"
+                            st.markdown(f"[💬 Chamar no WhatsApp com a mensagem pronta]({link_whats})")
             else:
                 st.info("Nenhum contato registrado para esta loja.")
         else:
