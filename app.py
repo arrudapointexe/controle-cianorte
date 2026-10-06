@@ -408,12 +408,15 @@ with aba_whatsapp:
                         # Link para chamar no whatsapp
                         numero_limpo = ''.join(filter(str.isdigit, str(row['Telefone'])))
                         if numero_limpo:
+                            # Se não tiver DDI, coloca 55 (Brasil) por padrão para facilitar
                             if len(numero_limpo) <= 11:
                                 numero_limpo = "55" + numero_limpo
                                 
                             msg_encoded = urllib.parse.quote(msg)
                             link_whats = f"https://wa.me/{numero_limpo}?text={msg_encoded}"
-                            st.markdown(f"[💬 Chamar no WhatsApp com a mensagem pronta]({link_whats})")
+                            
+                            # USANDO O BOTÃO OFICIAL DO STREAMLIT EM VEZ DE MARKDOWN:
+                            st.link_button("💬 Chamar no WhatsApp com a mensagem pronta", link_whats, type="primary")
             else:
                 st.info("Nenhum contato registrado para esta loja.")
         else:
