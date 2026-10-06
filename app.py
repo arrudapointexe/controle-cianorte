@@ -92,10 +92,43 @@ def load_config():
     else:
         return pd.DataFrame(columns=["Loja", "Codigo_Funcionaria", "Nome_Funcionaria", "Tarefa_Checklist"])
 
+# NOVA FUNÇÃO PARA CARREGAR OS DADOS DO WHATSAPP
+def load_whatsapp():
+    if connected:
+        try:
+            df = conn.query("SELECT * FROM clientes_whatsapp ORDER BY id ASC", ttl=0)
+            if df.empty:
+                return pd.DataFrame(columns=["Data_Hora", "Loja", "Nome_Cliente", "Telefone", "Motivo_Contato", "Objetivo_Reenvio", "Observacoes", "Funcionaria", "Status_Contato"])
+            
+            if "Funcionaria" in df.columns:
+                df["Funcionaria"] = df["Funcionaria"].str.upper()
+                
+            return df
+        except Exception as e:
+            st.warning(f"⚠️ Tabela de clientes_whatsapp não encontrada. Não esqueça de criá-la no banco. {e}")
+            return pd.DataFrame(columns=["Data_Hora", "Loja", "Nome_Cliente", "Telefone", "Motivo_Contato", "Objetivo_Reenvio", "Observacoes", "Funcionaria", "Status_Contato"])
+    else:
+        return pd.DataFrame(columns=["Data_Hora", "Loja", "Nome_Cliente", "Telefone", "Motivo_Contato", "Objetivo_Reenvio", "Observacoes", "Funcionaria", "Status_Contato"])
+
+# NOVA FUNÇÃO PARA INSERIR OS DADOS DO WHATSAPP
+def insert_whatsapp(entry):
+    if connected:
+        try:
+            with conn.session as s:
+                s.execute(
+                    text('INSERT INTO clientes_whatsapp ("Data_Hora", "Loja", "Nome_Cliente", "Telefone", "Motivo_Contato", "Objetivo_Reenvio", "Observacoes", "Funcionaria", "Status_Contato") VALUES (:Data_Hora, :Loja, :Nome_Cliente, :Telefone, :Motivo_Contato, :Objetivo_Reenvio, :Observacoes, :Funcionaria, :Status_Contato)'),
+                    entry
+                )
+                s.commit()
+            st.cache_data.clear()
+        except Exception as e:
+            st.error(f"Erro ao salvar no banco de dados (WhatsApp): {e}")
+
 # Sempre recarregar os dados do zero para evitar sobreposição se outra loja usou
 st.session_state.data = load_data()
 st.session_state.checklist_data = load_checklist()
 st.session_state.config_data = load_config()
+st.session_state.whatsapp_data = load_whatsapp() # Carregando estado do WhatsApp
 
 # Prepara as lojas baseadas na configuração
 df_config = st.session_state.config_data
@@ -148,8 +181,13 @@ st.title("🛍️ Controle de Fluxo - Lojas Cianorte")
 if not connected:
     st.info("Aguardando configuração do PostgreSQL... Verifique as credenciais.")
 
-# Criação das abas
-aba_vendedoras, aba_checklist, aba_admin = st.tabs(["👩💼 Área das Vendedoras", "✅ Checklist Diário", "📊 Área Administrativa"])
+# Criação das abas (MODIFICADO PARA ADICIONAR ABA WHATSAPP)
+aba_vendedoras, aba_checklist, aba_whatsapp, aba_admin = st.tabs([
+    "👩‍💼 Área das Vendedoras", 
+    "✅ Checklist Diário", 
+    "📱 Clientes WhatsApp", 
+    "📊 Área Administrativa"
+])
 
 with aba_vendedoras:
     st.header("Registro de Movimentação")
@@ -281,6 +319,90 @@ with aba_checklist:
                 st.rerun()
             else:
                 st.info("Nenhuma nova tarefa foi marcada.")
+
+# NOVA ABA: CLIENTES WHATSAPP
+with aba_whatsapp:
+    st.header(f"📱 Clientes WhatsApp - {st.session_state.loja_selecionada}")
+    st.markdown("Registre clientes que enviaram mensagem para acompanhamento futuro (satisfação, compra ou recompra).")
+    
+    col_form, col_lista = st.columns([1, 1.5])
+    
+    with col_form:
+        st.subheader("Novo Registro de Contato")
+        with st.form("form_whatsapp", clear_on_submit=True):
+            nome_cliente = st.text_input("Nome do Cliente*")
+            telefone_cliente = st.text_input("Telefone / WhatsApp*")
+            
+            motivo_contato = st.selectbox("Motivo do Contato Original", [
+                "Informação", 
+                "Orçamento", 
+                "Dúvida sobre Produto",
+                "Reclamação", 
+                "Outro"
+            ])
+            
+            objetivo_reenvio = st.selectbox("Objetivo de Reenvio Futuro*", [
+                "Satisfação (Pós-venda)", 
+                "Tentativa de Compra (Não finalizou)", 
+                "Recompra (Ofertas futuras)"
+            ])
+            
+            obs_whats = st.text_area("Observações (O que o cliente queria?)")
+            
+            funcionaria_whats = st.text_input("Sua assinatura (Nome da funcionária)*")
+            
+            submit_whats = st.form_submit_button("Salvar Contato", use_container_width=True)
+            
+            if submit_whats:
+                if not nome_cliente.strip() or not telefone_cliente.strip() or not funcionaria_whats.strip():
+                    st.error("Por favor, preencha todos os campos obrigatórios (*).")
+                else:
+                    new_entry = {
+                        "Data_Hora": get_now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "Loja": st.session_state.loja_selecionada,
+                        "Nome_Cliente": nome_cliente.strip(),
+                        "Telefone": telefone_cliente.strip(),
+                        "Motivo_Contato": motivo_contato,
+                        "Objetivo_Reenvio": objetivo_reenvio,
+                        "Observacoes": obs_whats.strip(),
+                        "Funcionaria": funcionaria_whats.strip().upper(),
+                        "Status_Contato": "Pendente"
+                    }
+                    st.session_state.whatsapp_data = pd.concat([st.session_state.whatsapp_data, pd.DataFrame([new_entry])], ignore_index=True)
+                    insert_whatsapp(new_entry)
+                    st.success(f"Contato salvo com sucesso!")
+                    
+    with col_lista:
+        st.subheader("📋 Lista de Contatos da Loja")
+        df_whats = st.session_state.whatsapp_data
+        
+        if not df_whats.empty:
+            df_loja_whats = df_whats[df_whats["Loja"] == st.session_state.loja_selecionada]
+            if not df_loja_whats.empty:
+                # Ordenar para mostrar os mais recentes primeiro
+                df_loja_whats = df_loja_whats.sort_values(by="Data_Hora", ascending=False)
+                
+                # Exibição bonita usando expander para cada cliente
+                for idx, row in df_loja_whats.iterrows():
+                    icone = "🟢" if row.get("Status_Contato", "Pendente") == "Pendente" else "✅"
+                    with st.expander(f"{icone} {row['Nome_Cliente']} - {row['Objetivo_Reenvio']} ({row['Data_Hora'][:10]})"):
+                        st.write(f"**Telefone:** {row['Telefone']}")
+                        st.write(f"**Motivo Inicial:** {row['Motivo_Contato']}")
+                        st.write(f"**Observações:** {row['Observacoes']}")
+                        st.write(f"**Atendido por:** {row['Funcionaria']}")
+                        
+                        # Link para chamar no whatsapp
+                        numero_limpo = ''.join(filter(str.isdigit, str(row['Telefone'])))
+                        if numero_limpo:
+                            # Se não tiver DDI, coloca 55 (Brasil) por padrão para facilitar
+                            if len(numero_limpo) <= 11:
+                                numero_limpo = "55" + numero_limpo
+                            link_whats = f"https://wa.me/{numero_limpo}"
+                            st.markdown(f"[💬 Chamar no WhatsApp]({link_whats})")
+            else:
+                st.info("Nenhum contato registrado para esta loja.")
+        else:
+            st.info("Nenhum contato registrado.")
 
 with aba_admin:
     st.header("Visão Geral das Lojas")
